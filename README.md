@@ -49,8 +49,13 @@ Make sure you have setup Rust environment (>= 1.64).
   - `git clone --recurse-submodules https://github.com/AcalaNetwork/chopsticks.git && cd chopsticks`
 - Install deps
   - `yarn`
+- Build packages
+  - `yarn build`
 - Build wasm. Please do not use IDE's built-in tools to build wasm.
   - `yarn build-wasm`
+
+## Run Robonomics locally
+`node packages/chopsticks/dist/esm/cli.js --endpoint=wss://kusama.rpc.robonomics.network/ws`
 
 ## Run
 
