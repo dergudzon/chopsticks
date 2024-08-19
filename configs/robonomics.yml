@@ -1,0 +1,7 @@
+endpoint: wss://kusama.rpc.robonomics.network/ws
+mock-signature-host: true
+# block: ${env.ROBONOMICS_BLOCK_NUMBER}
+db: ./db_robonomics.sqlite
+runtime-log-level: 5
+
+
