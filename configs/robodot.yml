@@ -1,0 +1,5 @@
+endpoint: wss://polkadot.rpc.robonomics.network/ws
+mock-signature-host: true
+# block: ${env.ROBODOT_BLOCK_NUMBER}
+db: ./db_robodot.sqlite
+runtime-log-level: 5
