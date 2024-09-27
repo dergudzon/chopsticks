@@ -9,7 +9,7 @@ const httpLogger = defaultLogger.child({ name: 'http' })
 const wsLogger = defaultLogger.child({ name: 'ws' })
 
 const singleRequest = z.object({
-  id: z.number(),
+  id: z.optional(z.union([z.number().int(), z.string(), z.null()])),
   jsonrpc: z.literal('2.0'),
   method: z.string(),
   params: z.array(z.any()).default([]),
@@ -78,7 +78,7 @@ const portInUse = async (port: number) => {
   return inUse
 }
 
-export const createServer = async (handler: Handler, port: number) => {
+export const createServer = async (handler: Handler, addr: string, port: number) => {
   let wss: WebSocketServer | undefined
   let listenPort: number | undefined
 
@@ -89,6 +89,21 @@ export const createServer = async (handler: Handler, port: number) => {
     unsubscribe: () => {
       throw new Error('Subscription is not supported')
     },
+  }
+
+  const safeHandleRequest = async (request: z.infer<typeof singleRequest>) => {
+    try {
+      const result = await handler(request, emptySubscriptionManager)
+      return request.id === undefined ? undefined : { id: request.id, jsonrpc: '2.0', result }
+    } catch (err: any) {
+      return {
+        jsonrpc: '2.0',
+        id: request.id,
+        error: {
+          message: err.message,
+        },
+      }
+    }
   }
 
   const server = http.createServer(async (req, res) => {
@@ -112,24 +127,21 @@ export const createServer = async (handler: Handler, port: number) => {
 
       let response: any
       if (Array.isArray(parsed.data)) {
-        response = await Promise.all(
-          parsed.data.map((req) => {
-            const result = handler(req, emptySubscriptionManager)
-            return { id: req.id, jsonrpc: '2.0', result }
-          }),
-        )
+        response = await Promise.all(parsed.data.map(safeHandleRequest))
+        response = response.filter((r) => r !== undefined)
       } else {
-        const result = await handler(parsed.data, emptySubscriptionManager)
-        response = { id: parsed.data.id, jsonrpc: '2.0', result }
+        response = await safeHandleRequest(parsed.data)
       }
 
-      respond(res, JSON.stringify(response))
+      if (response !== undefined) {
+        respond(res, JSON.stringify(response))
+      }
     } catch (err: any) {
       respond(
         res,
         JSON.stringify({
           jsonrpc: '2.0',
-          id: 1,
+          id: null,
           error: {
             message: err.message,
           },
@@ -150,7 +162,7 @@ export const createServer = async (handler: Handler, port: number) => {
         reject(e)
       }
       server.once('error', onError)
-      server.listen(preferPort, () => {
+      server.listen(preferPort, addr, () => {
         wss = new WebSocketServer({ server, maxPayload: 1024 * 1024 * 100 })
         listenPort = (server.address() as AddressInfo).port
         server.removeListener('error', onError)
@@ -224,7 +236,7 @@ export const createServer = async (handler: Handler, port: number) => {
           result: resp ?? null,
         }
       } catch (e) {
-        wsLogger.info('Error handling request: %o', (e as Error).stack)
+        wsLogger.error('Error handling request: %o', (e as Error).stack)
         return {
           id: req.id,
           jsonrpc: '2.0',

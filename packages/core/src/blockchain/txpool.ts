@@ -39,6 +39,7 @@ export interface BuildBlockParams {
   horizontalMessages: Record<number, HorizontalMessage[]>
   transactions: HexString[]
   unsafeBlockHeight?: number
+  relayChainStateOverrides?: [HexString, HexString | null][]
 }
 
 export class TxPool {
@@ -177,6 +178,7 @@ export class TxPool {
     const downwardMessages = params?.downwardMessages || this.#dmp.splice(0)
     const horizontalMessages = params?.horizontalMessages || { ...this.#hrmp }
     const unsafeBlockHeight = params?.unsafeBlockHeight
+    const relayChainStateOverrides = params?.relayChainStateOverrides
     if (!params?.upwardMessages) {
       for (const id of Object.keys(this.#ump)) {
         delete this.#ump[id]
@@ -195,9 +197,10 @@ export class TxPool {
         downwardMessages,
         horizontalMessages,
         unsafeBlockHeight,
+        relayChainStateOverrides,
       })
 
-      // with the latest message queue, messages are processed in the upcoming block
+      // with the latest message queue, messages could be processed in the upcoming block
       if (!this.#chain.processQueuedMessages) return
       // if block was built without horizontal or downward messages then skip
       if (_.isEmpty(horizontalMessages) && _.isEmpty(downwardMessages)) return
@@ -210,7 +213,7 @@ export class TxPool {
         const rawValue = await this.#chain.head.get(key)
         if (!rawValue) continue
         const message = meta.registry.createType('PalletMessageQueueBookState', hexToU8a(rawValue)).toJSON() as any
-        if (message.size > 0) {
+        if (message.size > 0 && message.end > message.begin) {
           logger.info('Queued messages detected, building a new block')
           // build a new block to process the queued messages
           await this.#chain.newBlock()
