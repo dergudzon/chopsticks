@@ -98,7 +98,7 @@ export class SetValidationData implements InherentProvider {
 
     const extrinsic = await getValidationData(parent)
 
-    const newEntries: [HexString, HexString | null][] = []
+    let newEntries: [HexString, HexString | null][] = []
     const downwardMessages: DownwardMessage[] = []
     const horizontalMessages: Record<number, HorizontalMessage[]> = {}
 
@@ -113,7 +113,7 @@ export class SetValidationData implements InherentProvider {
       extrinsic.relayChainState.trieNodes,
     )
 
-    const slotIncrease = Math.max(
+    const relaySlotIncrease = Math.max(
       1, // min
       (meta.consts.timestamp?.minimumPeriod as any as BN) // legacy
         ?.divn(3000) // relaychain min period
@@ -129,8 +129,8 @@ export class SetValidationData implements InherentProvider {
         // increment current slot
         const relayCurrentSlot = decoded[key]
           ? meta.registry.createType<Slot>('Slot', hexToU8a(decoded[key])).toNumber()
-          : (await getCurrentSlot(parent)) * slotIncrease
-        const newSlot = meta.registry.createType<Slot>('Slot', relayCurrentSlot + slotIncrease)
+          : (await getCurrentSlot(parent)) * relaySlotIncrease
+        const newSlot = meta.registry.createType<Slot>('Slot', relayCurrentSlot + relaySlotIncrease)
         newEntries.push([key, u8aToHex(newSlot.toU8a())])
       } else {
         newEntries.push([key, decoded[key]])
@@ -268,6 +268,16 @@ export class SetValidationData implements InherentProvider {
       newEntries.push([upgradeKey, null])
     }
 
+    // Apply relay chain state overrides
+    if (params.relayChainStateOverrides) {
+      for (const [key, value] of params.relayChainStateOverrides) {
+        // Remove any entry that matches the key being overridden
+        newEntries = newEntries.filter(([k, _]) => k != key)
+        // Push override
+        newEntries.push([key, value])
+      }
+    }
+
     const { trieRootHash, nodes } = await createProof(extrinsic.relayChainState.trieNodes, newEntries)
 
     const newData = {
@@ -277,7 +287,7 @@ export class SetValidationData implements InherentProvider {
       validationData: {
         ...extrinsic.validationData,
         relayParentStorageRoot: trieRootHash,
-        relayParentNumber: extrinsic.validationData.relayParentNumber + slotIncrease,
+        relayParentNumber: extrinsic.validationData.relayParentNumber + relaySlotIncrease,
       },
       relayChainState: {
         trieNodes: nodes,
